@@ -1,0 +1,8 @@
+.env.local
+.env
+node_modules/
+.claude
+.next
+.playwright-mcp/
+.DS_Store
+*.tsbuildinfo

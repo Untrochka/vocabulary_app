@@ -1,0 +1,38 @@
+// Стрики и дневная активность — собственная БД приложения, не Notion.
+// Notion остаётся источником правды только для слов и их SRS-статусов.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Пин на стабильную линию Prisma 6.x: у 7.x обязательны драйвер-адаптеры
+// и отдельный prisma.config.ts — экспериментальная сложность, которая
+// не нужна для двух таблиц счётчика стрика.
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model DailyActivity {
+  date           String   @id // YYYY-MM-DD, локальная дата пользователя (та же, что todayISO() в SRS)
+  activeReviews  Int      @default(0)
+  passiveReviews Int      @default(0)
+  newWords       Int      @default(0)
+  minimumMet     Boolean  @default(false)
+  updatedAt      DateTime @updatedAt
+
+  @@map("daily_activity")
+}
+
+// Одна строка-синглтон — приложение однопользовательское, отдельный user_id избыточен.
+model StreakState {
+  id             Int      @id @default(1)
+  current        Int      @default(0)
+  best           Int      @default(0)
+  lastActiveDate String? // YYYY-MM-DD последнего дня, когда дневной минимум был выполнен
+  updatedAt      DateTime @updatedAt
+
+  @@map("streak_state")
+}
