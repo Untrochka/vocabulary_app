@@ -1,11 +1,19 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { pickReadingWords, generateStory, READING_MAX_WORDS } from "./reading";
+import { pickReadingWords, pickReadingWordsForDay, listLearnedDays, generateStory, READING_MAX_WORDS } from "./reading";
 import { EMPTY_SRS } from "./srs";
 import { CAPS } from "@/shared/config/app";
 import type { SessionCard, SessionResponse } from "@/entities/session/model";
+import type { Word } from "@/entities/word/model";
 
 function makeCard(id: string, word: string, tr1 = `перевод-${id}`): SessionCard {
   return { id, word, tr1, tr2: "", ipa: "", example: "", strength: 0, passive: EMPTY_SRS, active: EMPTY_SRS };
+}
+
+function makeWord(id: string, word: string, learnedAt: string | null, tr1 = `перевод-${id}`): Word {
+  return {
+    id, word, tr1, tr2: "", ipa: "", example: "", status: "Изучен активно", strength: 100, learnedAt,
+    passive: EMPTY_SRS, active: EMPTY_SRS,
+  };
 }
 
 function makeSession(parts: Partial<Pick<SessionResponse, "newToLearn" | "newActive" | "duePassive" | "dueActive">>): SessionResponse {
@@ -45,6 +53,46 @@ describe("pickReadingWords", () => {
     const dueActive = Array.from({ length: READING_MAX_WORDS + 10 }, (_, i) => makeCard(String(i), `word${i}`));
     const session = makeSession({ dueActive });
     expect(pickReadingWords(session)).toHaveLength(READING_MAX_WORDS);
+  });
+});
+
+describe("pickReadingWordsForDay", () => {
+  it("only includes words learned on the given day, regardless of current SRS due-state", () => {
+    const words = [
+      makeWord("1", "harvest", "2026-08-20"),
+      makeWord("2", "narrow", "2026-08-21"),
+      makeWord("3", "elaborate", "2026-08-20"),
+    ];
+    expect(pickReadingWordsForDay(words, "2026-08-20").map((w) => w.word)).toEqual(["harvest", "elaborate"]);
+  });
+
+  it("skips words without a translation and words never learned", () => {
+    const words = [makeWord("1", "harvest", "2026-08-20", ""), makeWord("2", "narrow", null)];
+    expect(pickReadingWordsForDay(words, "2026-08-20")).toHaveLength(0);
+  });
+
+  it("caps at READING_MAX_WORDS", () => {
+    const words = Array.from({ length: READING_MAX_WORDS + 10 }, (_, i) => makeWord(String(i), `word${i}`, "2026-08-20"));
+    expect(pickReadingWordsForDay(words, "2026-08-20")).toHaveLength(READING_MAX_WORDS);
+  });
+});
+
+describe("listLearnedDays", () => {
+  it("counts words per day and sorts most-recent first", () => {
+    const words = [
+      makeWord("1", "harvest", "2026-08-20"),
+      makeWord("2", "narrow", "2026-08-21"),
+      makeWord("3", "elaborate", "2026-08-20"),
+    ];
+    expect(listLearnedDays(words)).toEqual([
+      { date: "2026-08-21", count: 1 },
+      { date: "2026-08-20", count: 2 },
+    ]);
+  });
+
+  it("excludes words with no learnedAt or no translation", () => {
+    const words = [makeWord("1", "harvest", null), makeWord("2", "narrow", "2026-08-20", "")];
+    expect(listLearnedDays(words)).toEqual([]);
   });
 });
 

@@ -13,6 +13,14 @@ interface LookupResult {
   tr2?: string;
   existing?: { id: string; word: string; tr1: string; status: string };
 }
+interface DayInfo { date: string; count: number; }
+
+// Formats a "YYYY-MM-DD" as e.g. "Aug 20" — parsed as a local calendar date
+// (T00:00:00), not a UTC instant, so it doesn't shift a day depending on
+// the reader's timezone.
+function formatDayLabel(date: string): string {
+  return new Date(`${date}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 // Splits the story on **word** markers placed by the model around today's
 // target words, into plain text and highlighted chunks — no third-party
@@ -69,10 +77,14 @@ export default function ReadingScreen() {
   const [lookupErr, setLookupErr] = useState<string | null>(null);
   const [addState, setAddState] = useState<"idle" | "adding" | "added" | "error">("idle");
 
-  function load() {
+  const [days, setDays] = useState<DayInfo[]>([]);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null); // null = today's live session
+
+  function load(day: string | null) {
+    setSelectedDay(day);
     setLoading(true); setErr(null); setStory(null);
     try { speechSynthesis.cancel(); } catch {}
-    fetch("/api/reading")
+    fetch(day ? `/api/reading?day=${day}` : "/api/reading")
       .then((r) => r.json())
       .then((d) => {
         if (d.error) setErr(d.error);
@@ -83,7 +95,8 @@ export default function ReadingScreen() {
   }
 
   useEffect(() => {
-    load();
+    load(null);
+    fetch("/api/reading/days").then((r) => r.json()).then((d) => setDays(d.days ?? [])).catch(() => {});
     return () => { try { speechSynthesis.cancel(); } catch {} };
   }, []);
 
@@ -140,17 +153,43 @@ export default function ReadingScreen() {
         <h2 className="font-display text-[22px] text-eel">Mini-reading</h2>
       </div>
 
+      {days.length > 0 && (
+        <div className="flex gap-2 overflow-x-auto mb-4 pb-1">
+          <button
+            onClick={() => load(null)}
+            className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-extrabold border-2 transition-colors ${
+              selectedDay === null ? "bg-macaw border-macaw text-white" : "bg-white border-swan text-wolf"
+            }`}
+          >
+            Today
+          </button>
+          {days.map((d) => (
+            <button
+              key={d.date}
+              onClick={() => load(d.date)}
+              className={`shrink-0 px-3.5 py-2 rounded-full text-xs font-extrabold border-2 transition-colors ${
+                selectedDay === d.date ? "bg-macaw border-macaw text-white" : "bg-white border-swan text-wolf"
+              }`}
+            >
+              {formatDayLabel(d.date)} · {d.count}
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading && (
         <Center>
           <div className="pop text-macaw"><Icon name="book" style={{ width: 56, height: 56 }} /></div>
-          <p className="text-wolf font-bold mt-3">Preparing a story from today&apos;s words…</p>
+          <p className="text-wolf font-bold mt-3">
+            Preparing a story from {selectedDay ? formatDayLabel(selectedDay) : "today"}&apos;s words…
+          </p>
         </Center>
       )}
 
       {err && !loading && (
         <Center>
           <p className="text-cardinalDark font-bold text-center">{err}</p>
-          <div className="w-full mt-4"><DuoButton variant="white" onClick={load}>Try again</DuoButton></div>
+          <div className="w-full mt-4"><DuoButton variant="white" onClick={() => load(selectedDay)}>Try again</DuoButton></div>
         </Center>
       )}
 
@@ -158,7 +197,9 @@ export default function ReadingScreen() {
         <>
           <div className="rounded-3xl bg-white border-2 border-swan shadow-card p-5">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] text-wolf font-extrabold uppercase tracking-wide">{words.length} words of the day in the story</span>
+              <span className="text-[11px] text-wolf font-extrabold uppercase tracking-wide">
+                {words.length} words from {selectedDay ? formatDayLabel(selectedDay) : "today"} in the story
+              </span>
               <button
                 onClick={playAll}
                 aria-label="Play the story"
@@ -186,7 +227,7 @@ export default function ReadingScreen() {
           )}
 
           <div className="flex gap-2.5 mt-5">
-            <DuoButton variant="white" onClick={load}>Another story</DuoButton>
+            <DuoButton variant="white" onClick={() => load(selectedDay)}>Another story</DuoButton>
             <DuoButton variant="green" onClick={() => router.push("/")}>Done</DuoButton>
           </div>
         </>

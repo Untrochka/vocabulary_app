@@ -1,6 +1,7 @@
 import { fetchTranslation } from "@/shared/lib/translate";
 import { lemmatize } from "@/shared/lib/lemmatize";
 import type { SessionCard, SessionResponse } from "@/entities/session/model";
+import type { Word } from "@/entities/word/model";
 
 // Max number of words that go into one story. Independent of how many words
 // are actually due for review today — without a cap, a large due queue would
@@ -103,6 +104,31 @@ export function pickReadingWords(session: SessionResponse): ReadingWord[] {
     }
   }
   return out;
+}
+
+// "Today" pulls from the live session (due reviews + new words), so it
+// naturally includes words regardless of how long ago they were learned —
+// but on a day with few new words and few due reviews, that pool can be
+// thin, and a fully-mastered word may go a long time between due dates and
+// simply never come up. Picking a specific day instead pulls every word
+// whose learnedAt matches that date, independent of today's SRS due-state —
+// this is how a story can include words you already know well.
+export function listLearnedDays(words: Word[]): { date: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const w of words) {
+    if (!w.learnedAt || !w.tr1) continue;
+    counts.set(w.learnedAt, (counts.get(w.learnedAt) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([date, count]) => ({ date, count }))
+    .sort((a, b) => (a.date < b.date ? 1 : -1));
+}
+
+export function pickReadingWordsForDay(words: Word[], day: string): ReadingWord[] {
+  return words
+    .filter((w) => w.learnedAt === day && w.tr1)
+    .slice(0, READING_MAX_WORDS)
+    .map((w) => ({ word: w.word, tr1: w.tr1 }));
 }
 
 // Generates a coherent story in English using all the given words — via
