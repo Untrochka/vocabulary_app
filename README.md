@@ -11,7 +11,7 @@ Four screens, nothing else:
 - **Home** — streak, level, daily goal, this week's activity, today's plan (learn / review counts).
 - **Study** — the lesson queue: new words, same-day reinforcement steps, due reviews, both passive and active tracks.
 - **Add** — add one word or a batch, with auto-translation, duplicate detection by lemma, and a way to backfill missing translations on old entries.
-- **Reading** — a short story generated from today's words (Groq, free tier), read aloud in-browser, with tap-to-translate on any word in context.
+- **Reading** — a short story generated from words you've learned (Groq, free tier), read aloud in-browser, with tap-to-translate on any word in context. Defaults to today's live session, or pick any past day you learned words on — useful for words that graduated to "mastered" long ago and rarely come up for review anymore.
 
 The interface language is English; the vocabulary data itself is Russian-to-English by design (that's the actual product — translating the UI chrome doesn't change what the app teaches).
 
