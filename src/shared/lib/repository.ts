@@ -55,6 +55,7 @@ function rowToWord(row: WordRow): Word {
     lapses: row.lapses,
     debtSince: row.debtSince,
     firstSeenAt: row.firstSeenAt,
+    firstActiveAt: row.firstActiveAt,
     batchId: row.batchId,
   };
 }
@@ -81,6 +82,7 @@ function fieldsToData(f: Partial<Word>): Prisma.WordUpdateInput {
   if (f.lapses !== undefined) out.lapses = f.lapses;
   if (f.debtSince !== undefined) out.debtSince = f.debtSince;
   if (f.firstSeenAt !== undefined) out.firstSeenAt = f.firstSeenAt;
+  if (f.firstActiveAt !== undefined) out.firstActiveAt = f.firstActiveAt;
   if (f.batchId !== undefined) out.batchId = f.batchId;
   return out;
 }

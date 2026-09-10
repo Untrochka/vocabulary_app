@@ -14,7 +14,7 @@ function makeWord(id: string, word: string, learnedAt: string | null, tr1 = `п�
     id, word, tr1, tr2: "", ipa: "", example: "", status: "Изучен активно", strength: 100, learnedAt,
     passive: EMPTY_SRS, active: EMPTY_SRS,
     priority: 0, frequency: null, ieltsRelevant: null, activeWorthy: null, gradeReason: null, gradedAt: null,
-    correctStreak: 0, lapses: 0, debtSince: null, firstSeenAt: null, batchId: null,
+    correctStreak: 0, lapses: 0, debtSince: null, firstSeenAt: null, firstActiveAt: null, batchId: null,
   };
 }
 

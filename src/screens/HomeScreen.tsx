@@ -118,6 +118,10 @@ export default function HomeScreen() {
         <DuoButton variant="blue"><Icon name="book" style={{ width: 18, height: 18 }} /> Mini-reading from today&apos;s words</DuoButton>
       </Link>
 
+      <Link href="/recall" className="mt-2.5 block">
+        <DuoButton variant="yellow"><Icon name="mic" style={{ width: 18, height: 18 }} /> Evening recall</DuoButton>
+      </Link>
+
       <div className="grid grid-cols-3 gap-2.5 mt-4">
         <div className="bg-white border-2 border-swan rounded-2xl p-3 text-center"><b className="font-display text-xl block text-eel">{s?.counts.total ?? 0}</b><span className="text-[11px] text-wolf font-bold">total words</span></div>
         <div className="bg-white border-2 border-swan rounded-2xl p-3 text-center"><b className="font-display text-xl block text-feather">{s?.counts.mastered ?? 0}</b><span className="text-[11px] text-wolf font-bold">active</span></div>

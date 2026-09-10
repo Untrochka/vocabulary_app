@@ -9,7 +9,7 @@ function word(id: string, priority: number, batchId: string | null = null): Word
     status: "Не изучен", strength: 0, learnedAt: null,
     passive: EMPTY_SRS, active: EMPTY_SRS,
     priority, frequency: null, ieltsRelevant: null, activeWorthy: null, gradeReason: null, gradedAt: null,
-    correctStreak: 0, lapses: 0, debtSince: null, firstSeenAt: null, batchId,
+    correctStreak: 0, lapses: 0, debtSince: null, firstSeenAt: null, firstActiveAt: null, batchId,
   };
 }
 

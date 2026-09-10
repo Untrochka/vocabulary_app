@@ -82,6 +82,7 @@ model Word {
   lapses        Int       @default(0) // total times this word has been gotten wrong
   debtSince     String? // YYYY-MM-DD the word first went unresolved; null = no debt
   firstSeenAt   String? // YYYY-MM-DD of the first time this word was shown, for the "yesterday's words" warm-up
+  firstActiveAt String? // YYYY-MM-DD of this word's first active review — which day's recall page it belongs to
   batchId       String? // links a word to the PracticeBatch it was added from, if any
 
   createdAt DateTime @default(now())

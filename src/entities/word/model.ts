@@ -32,6 +32,7 @@ export interface Word {
   lapses: number; // total times this word has been gotten wrong
   debtSince: string | null; // YYYY-MM-DD this word first went unresolved; null = no debt
   firstSeenAt: string | null; // YYYY-MM-DD of the first time this word was shown
+  firstActiveAt: string | null; // YYYY-MM-DD of this word's first active review
   batchId: string | null; // links to a PracticeBatch, if added from one
 }
 
