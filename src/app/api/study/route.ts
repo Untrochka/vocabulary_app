@@ -6,6 +6,7 @@ import type { Word } from "@/entities/word/model";
 import { isActiveMature } from "@/entities/word/status";
 import { computePriority } from "@/shared/lib/priority";
 import { recordActivity, type ActivityKind } from "@/shared/lib/streaks";
+import { maybeCompletePracticeBatch } from "@/shared/lib/practice";
 
 export const dynamic = "force-dynamic";
 
@@ -99,6 +100,18 @@ export async function POST(req: Request) {
       await recordActivity(activityKind);
     } catch (e) {
       console.error("streak: recordActivity failed", e);
+    }
+
+    // "learn" is the only action that ever takes a word past its first
+    // passive pass (review()/isDue() both require reps > 0 already, so a
+    // word can only reach action:"review" once it's already past this
+    // point) — the one moment a practice batch could just have finished.
+    if (action === "learn" && w.batchId) {
+      try {
+        await maybeCompletePracticeBatch(w.batchId);
+      } catch (e) {
+        console.error("practice: maybeCompletePracticeBatch failed", e);
+      }
     }
 
     return NextResponse.json({ ok: true, strength: fields.strength });

@@ -19,6 +19,8 @@ export default function AddScreen() {
   const [one, setOne] = useState({ word: "", tr1: "", tr2: "", ipa: "", example: "" });
   const [bulk, setBulk] = useState("");
   const [bulkChecked, setBulkChecked] = useState<{ text: string; isDup: boolean }[] | null>(null);
+  const [isPractice, setIsPractice] = useState(false);
+  const [practiceSource, setPracticeSource] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [enriching, setEnriching] = useState(false);
@@ -99,6 +101,7 @@ export default function AddScreen() {
         setMsg(`Added: ${d.created}${skippedNote}`);
         setOne({ word: "", tr1: "", tr2: "", ipa: "", example: "" });
         setBulk(""); setBulkChecked(null);
+        setIsPractice(false); setPracticeSource("");
         setEditingId(null);
         refreshAllWords();
       }
@@ -220,9 +223,19 @@ export default function AddScreen() {
             </div>
           )}
 
+          <label className="flex items-center gap-2 text-sm font-bold text-wolf">
+            <input type="checkbox" checked={isPractice} onChange={(e) => setIsPractice(e.target.checked)} />
+            Practice batch (from reading/listening) — raises today&apos;s cap to fit it all in one sitting
+          </label>
+          {isPractice && (
+            <input className={input} placeholder='Source (optional) — e.g. "reading: coral reefs article"'
+              value={practiceSource} onChange={(e) => setPracticeSource(e.target.value)} />
+          )}
+
           <div className="mt-1.5">
-            <DuoButton variant="green" disabled={busy || !bulk.trim()} onClick={() => submit({ text: bulk })}>
-              <Icon name="plus" style={{ width: 18, height: 18 }} /> Add batch
+            <DuoButton variant="green" disabled={busy || !bulk.trim()}
+              onClick={() => submit({ text: bulk, ...(isPractice ? { batchSource: practiceSource } : {}) })}>
+              <Icon name="plus" style={{ width: 18, height: 18 }} /> {isPractice ? "Add practice batch" : "Add batch"}
             </DuoButton>
           </div>
         </div>

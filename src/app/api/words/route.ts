@@ -5,6 +5,8 @@ import { lemmatize } from "@/shared/lib/lemmatize";
 import { parseEntry } from "@/shared/lib/parseEntry";
 import { assessWordQuality } from "@/shared/lib/wordValidation";
 import { gradeAndSaveWords } from "@/shared/lib/wordGrader";
+import { createPracticeBatch } from "@/shared/lib/practice";
+import { computePriority } from "@/shared/lib/priority";
 import type { NewWordInput } from "@/entities/word/model";
 
 export const dynamic = "force-dynamic";
@@ -78,7 +80,34 @@ export async function POST(req: Request) {
 
     if (!clean.length) return NextResponse.json({ error: "No words to add", skipped }, { status: 400 });
 
-    const createdWords = await repo.create(clean);
+    // A practice batch (reading/listening word dump) — batchSource is a free
+    // text label, e.g. "reading: an article about coral reefs". Presence of
+    // the field (even empty string) is what marks this a practice add;
+    // absence just means a regular add, no batch created.
+    const batchId = typeof body?.batchSource === "string" ? await createPracticeBatch(body.batchSource) : undefined;
+
+    const createdWords = await repo.create(clean, batchId);
+
+    // A real initial priority right away, independent of grading — a
+    // practice batch's freshness boost (priority.ts) doesn't depend on
+    // frequency/ieltsRelevant at all, so it shouldn't wait on Groq to apply.
+    // gradeAndSaveWords below overwrites this with a better-informed value
+    // once frequency/ieltsRelevant are known — if grading fails or GROQ_API_KEY
+    // isn't set, the freshness boost still took effect.
+    await Promise.all(
+      createdWords.map((w) =>
+        repo.update(w.id, {
+          priority: computePriority({
+            frequency: w.frequency,
+            ieltsRelevant: w.ieltsRelevant,
+            correctStreak: w.correctStreak,
+            batchId: w.batchId,
+            firstSeenAt: w.firstSeenAt,
+            debtSince: w.debtSince,
+          }),
+        })
+      )
+    );
 
     // Best-effort — grading is a nice-to-have that shouldn't turn a
     // successful add into an error. Without GROQ_API_KEY this just fails

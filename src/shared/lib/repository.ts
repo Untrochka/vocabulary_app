@@ -15,7 +15,9 @@ export interface WordsRepository {
   update(id: string, fields: Partial<Word>): Promise<void>;
   // Returns the created rows (with their real ids), not just a count — the
   // caller needs the ids to grade the new words right after creation.
-  create(words: NewWordInput[]): Promise<Word[]>;
+  // batchId tags every word in this call as belonging to a PracticeBatch —
+  // see shared/lib/practice.ts.
+  create(words: NewWordInput[], batchId?: string): Promise<Word[]>;
 }
 
 function rowToWord(row: WordRow): Word {
@@ -117,7 +119,7 @@ class PostgresWordsRepository implements WordsRepository {
     await prisma.word.update({ where: { id }, data: fieldsToData(fields) });
   }
 
-  async create(words: NewWordInput[]): Promise<Word[]> {
+  async create(words: NewWordInput[], batchId?: string): Promise<Word[]> {
     const today = todayISO();
     const rows = await prisma.word.createManyAndReturn({
       data: words.map((w) => ({
@@ -128,6 +130,7 @@ class PostgresWordsRepository implements WordsRepository {
         example: w.example ?? "",
         status: STATUS.new,
         firstSeenAt: today,
+        batchId: batchId ?? null,
       })),
     });
     return rows.map(rowToWord);
