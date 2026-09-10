@@ -85,6 +85,15 @@ export default function HomeScreen() {
 
       {err && <div className="rounded-2xl border-2 border-cardinal bg-cardinal/10 text-cardinalDark px-4 py-3 text-sm font-bold mb-4">{err}</div>}
 
+      {s && s.debtCount > 0 && (
+        <Link href="/study" className="flex items-center gap-2.5 mb-4 bg-fox/10 border-2 border-fox rounded-2xl px-3.5 py-3">
+          <Icon name="flame" fill style={{ width: 20, height: 20 }} className="text-fox shrink-0" />
+          <span className="text-sm font-bold text-foxDark flex-1">
+            {s.debtCount} {s.debtCount === 1 ? "word needs" : "words need"} catching up — they&apos;ll come first in your next lesson
+          </span>
+        </Link>
+      )}
+
       <div className="relative rounded-2xl p-5 bg-white border-2 border-swan shadow-card">
         <h3 className="m-0 mb-3.5 text-[12px] tracking-wide uppercase text-wolf font-extrabold">Today&apos;s plan</h3>
         <div className="flex gap-3 mb-[18px]">
@@ -123,7 +132,7 @@ export default function HomeScreen() {
       </Link>
 
       <div className="grid grid-cols-3 gap-2.5 mt-4">
-        <div className="bg-white border-2 border-swan rounded-2xl p-3 text-center"><b className="font-display text-xl block text-eel">{s?.counts.total ?? 0}</b><span className="text-[11px] text-wolf font-bold">total words</span></div>
+        <Link href="/words" className="bg-white border-2 border-swan rounded-2xl p-3 text-center"><b className="font-display text-xl block text-eel">{s?.counts.total ?? 0}</b><span className="text-[11px] text-wolf font-bold">total words</span></Link>
         <div className="bg-white border-2 border-swan rounded-2xl p-3 text-center"><b className="font-display text-xl block text-feather">{s?.counts.mastered ?? 0}</b><span className="text-[11px] text-wolf font-bold">active</span></div>
         <div className="bg-white border-2 border-swan rounded-2xl p-3 text-center"><b className="font-display text-xl block text-macaw">{s?.counts.learning ?? 0}</b><span className="text-[11px] text-wolf font-bold">in progress</span></div>
       </div>

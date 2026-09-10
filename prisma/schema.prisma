@@ -110,13 +110,14 @@ model PracticeBatch {
 // key on purpose — a word can be deleted later and the history should still
 // read, same reasoning as an order line item outliving the product it referenced.
 model SelfExplanation {
-  id        String   @id @default(cuid())
-  wordId    String
-  forDate   String // YYYY-MM-DD this explanation is for
-  text      String // what the user wrote, in their own words
-  verdict   String? // "correct" | "partial" | "wrong" — null until Groq has judged it
-  feedback  String? // Groq's one-line note on what was missed, if anything
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  wordId      String
+  forDate     String // YYYY-MM-DD this recall attempt is for
+  guess       String // the word the user typed, recalled purely from memory
+  explanation String // what they wrote explaining its meaning, in their own words
+  verdict     String? // "correct" | "partial" | "wrong" — null until Groq has judged it
+  feedback    String? // Groq's one-line note on what was missed, if anything
+  createdAt   DateTime @default(now())
 
   @@index([wordId])
   @@index([forDate])

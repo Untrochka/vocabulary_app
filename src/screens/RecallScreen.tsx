@@ -8,11 +8,11 @@ import { BackButton } from "@/shared/ui/BackButton";
 
 interface RecallWord {
   id: string;
-  tr1: string;
   word: string | null; // only present once this word has been answered
-  explanation: { text: string; verdict: string | null; feedback: string | null } | null;
+  attempt: { guess: string; explanation: string; verdict: string | null; feedback: string | null } | null;
 }
 interface DayInfo { date: string; count: number; }
+interface Draft { guess: string; explanation: string; }
 
 // Formats a "YYYY-MM-DD" as e.g. "Aug 20" — parsed as a local calendar date
 // (T00:00:00), not a UTC instant, so it doesn't shift a day depending on
@@ -32,7 +32,9 @@ export default function RecallScreen() {
   const [days, setDays] = useState<DayInfo[]>([]);
   const [selectedDay, setSelectedDay] = useState<string | null>(null); // null = today
   const [words, setWords] = useState<RecallWord[]>([]);
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [hints, setHints] = useState<Record<string, string[]>>({}); // accumulated hints per word
+  const [hintLoading, setHintLoading] = useState<Record<string, boolean>>({});
   const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -46,7 +48,8 @@ export default function RecallScreen() {
         if (d.error) setErr(d.error);
         else {
           setWords(d.words ?? []);
-          setDrafts(Object.fromEntries((d.words ?? []).map((w: RecallWord) => [w.id, ""])));
+          setDrafts(Object.fromEntries((d.words ?? []).map((w: RecallWord) => [w.id, { guess: "", explanation: "" }])));
+          setHints({});
         }
       })
       .catch(() => setErr("Failed to load today's words"))
@@ -58,7 +61,21 @@ export default function RecallScreen() {
     fetch("/api/recall/days").then((r) => r.json()).then((d) => setDays(d.days ?? [])).catch(() => {});
   }, []);
 
-  async function submit(w: RecallWord, text: string) {
+  async function requestHint(wordId: string, level: 1 | 2) {
+    if (hintLoading[wordId]) return;
+    setHintLoading((s) => ({ ...s, [wordId]: true }));
+    try {
+      const r = await fetch(`/api/recall/hint?wordId=${wordId}&level=${level}`);
+      const d = await r.json();
+      if (!d.error) setHints((h) => ({ ...h, [wordId]: [...(h[wordId] ?? []), d.hint] }));
+    } catch {
+      // no hint this time — the learner can try again
+    } finally {
+      setHintLoading((s) => ({ ...s, [wordId]: false }));
+    }
+  }
+
+  async function submit(w: RecallWord, guess: string, explanation: string) {
     if (submitting[w.id]) return;
     setSubmitting((s) => ({ ...s, [w.id]: true }));
     try {
@@ -66,11 +83,11 @@ export default function RecallScreen() {
       const r = await fetch("/api/recall", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wordId: w.id, forDate: day, text }),
+        body: JSON.stringify({ wordId: w.id, forDate: day, guess, explanation }),
       });
       const d = await r.json();
       if (!d.error) {
-        setWords((ws) => ws.map((x) => (x.id === w.id ? { ...x, word: d.word, explanation: { text, verdict: d.verdict, feedback: d.feedback } } : x)));
+        setWords((ws) => ws.map((x) => (x.id === w.id ? { ...x, word: d.word, attempt: { guess, explanation, verdict: d.verdict, feedback: d.feedback } } : x)));
       }
     } catch {
       // leave the draft in place — user can retry
@@ -136,50 +153,75 @@ export default function RecallScreen() {
       {!loading && !err && words.length > 0 && (
         <>
           <p className="text-[10px] text-hare font-bold mb-3">
-            only the translation is shown — type the English word from memory
+            nothing is shown — recall the word and explain it yourself, from memory
           </p>
           <div className="flex flex-col gap-3.5">
-            {words.map((w) => {
-              const verdict = w.explanation?.verdict;
+            {words.map((w, idx) => {
+              const verdict = w.attempt?.verdict;
               const style = verdict ? VERDICT_STYLE[verdict] : null;
-              const answered = w.explanation != null;
+              const answered = w.attempt != null;
+              const draft = drafts[w.id] ?? { guess: "", explanation: "" };
+              const wordHints = hints[w.id] ?? [];
               return (
                 <div key={w.id} className="rounded-3xl bg-white border-2 border-swan shadow-card p-4">
-                  <div className="text-[11px] text-wolf font-extrabold uppercase tracking-wide mb-1">hint</div>
-                  <div className="font-display text-lg text-eel mb-2.5">{w.tr1}</div>
+                  <div className="text-[11px] text-wolf font-extrabold uppercase tracking-wide mb-2.5">word {idx + 1} of {words.length}</div>
 
                   {answered ? (
                     <>
-                      <p className="text-xs text-hare font-semibold">your answer: <span className="text-wolf font-bold">{w.explanation!.text || "—"}</span></p>
+                      <p className="text-xs text-hare font-semibold">your word: <span className="text-wolf font-bold">{w.attempt!.guess || "—"}</span></p>
+                      <p className="text-xs text-hare font-semibold mt-1">your explanation: <span className="text-wolf font-bold">{w.attempt!.explanation || "—"}</span></p>
                       {style && (
                         <div className={`mt-2.5 rounded-2xl border-2 px-3.5 py-2.5 ${style.bg}`}>
                           <div className="flex items-baseline justify-between">
                             <span className={`text-xs font-extrabold ${style.text}`}>{style.label}</span>
                             <span className="font-display text-base text-eel">{w.word}</span>
                           </div>
-                          {w.explanation?.feedback && <p className="text-xs text-wolf font-semibold mt-1">{w.explanation.feedback}</p>}
+                          {w.attempt?.feedback && <p className="text-xs text-wolf font-semibold mt-1">{w.attempt.feedback}</p>}
                         </div>
                       )}
                     </>
                   ) : (
                     <>
+                      {wordHints.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-2.5">
+                          {wordHints.map((h, i) => (
+                            <span key={i} className="px-2.5 py-1 rounded-full text-xs font-bold border-2 border-bee bg-bee/10 text-beeDark">{h}</span>
+                          ))}
+                        </div>
+                      )}
                       <input
-                        value={drafts[w.id] ?? ""}
-                        onChange={(e) => setDrafts((d) => ({ ...d, [w.id]: e.target.value }))}
-                        onKeyDown={(e) => { if (e.key === "Enter") submit(w, (drafts[w.id] ?? "").trim()); }}
-                        placeholder="Type the word…"
+                        value={draft.guess}
+                        onChange={(e) => setDrafts((d) => ({ ...d, [w.id]: { ...draft, guess: e.target.value } }))}
+                        placeholder="The word…"
                         className="w-full rounded-2xl border-2 border-swan bg-polar px-3.5 py-2.5 text-sm font-semibold text-eel outline-none focus:border-macaw transition-colors"
+                      />
+                      <textarea
+                        value={draft.explanation}
+                        onChange={(e) => setDrafts((d) => ({ ...d, [w.id]: { ...draft, explanation: e.target.value } }))}
+                        placeholder="What does it mean? Explain it your way…"
+                        rows={2}
+                        className="w-full resize-none rounded-2xl border-2 border-swan bg-polar px-3.5 py-2.5 text-sm font-semibold text-eel outline-none focus:border-macaw transition-colors mt-2"
                       />
                       <div className="flex gap-2 mt-2.5">
                         <DuoButton
                           variant="blue"
                           size="sm"
-                          disabled={submitting[w.id] || !(drafts[w.id] ?? "").trim()}
-                          onClick={() => submit(w, (drafts[w.id] ?? "").trim())}
+                          disabled={submitting[w.id] || (!draft.guess.trim() && !draft.explanation.trim())}
+                          onClick={() => submit(w, draft.guess.trim(), draft.explanation.trim())}
                         >
                           {submitting[w.id] ? "Checking…" : "Check"}
                         </DuoButton>
-                        <DuoButton variant="white" size="sm" disabled={submitting[w.id]} onClick={() => submit(w, "")}>
+                        {wordHints.length < 2 && (
+                          <DuoButton
+                            variant="white"
+                            size="sm"
+                            disabled={!!hintLoading[w.id]}
+                            onClick={() => requestHint(w.id, wordHints.length === 0 ? 1 : 2)}
+                          >
+                            {hintLoading[w.id] ? "…" : wordHints.length === 0 ? "First letter" : "Synonym"}
+                          </DuoButton>
+                        )}
+                        <DuoButton variant="white" size="sm" disabled={submitting[w.id]} onClick={() => submit(w, "", "")}>
                           Don&apos;t remember
                         </DuoButton>
                       </div>

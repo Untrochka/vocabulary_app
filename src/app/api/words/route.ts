@@ -12,13 +12,19 @@ import type { NewWordInput } from "@/entities/word/model";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30; // grading the newly-added words can take a few Groq round-trips
 
-// Lightweight list of all words — for duplicate checking on the add screen
-// (picking an existing word, highlighting matches within a batch).
+// List of all words — used for duplicate checking on the add screen (picking
+// an existing word, highlighting matches within a batch) and for the /words
+// browse screen (priority, status, debt — the replacement for eyeballing
+// the dictionary in Notion, which the Postgres migration retired).
 export async function GET() {
   try {
     const words = await repo.listAll();
     return NextResponse.json({
-      words: words.map((w) => ({ id: w.id, word: w.word, tr1: w.tr1, tr2: w.tr2, ipa: w.ipa, example: w.example })),
+      words: words.map((w) => ({
+        id: w.id, word: w.word, tr1: w.tr1, tr2: w.tr2, ipa: w.ipa, example: w.example,
+        status: w.status, priority: w.priority, correctStreak: w.correctStreak,
+        debtSince: w.debtSince, batchId: w.batchId, activeWorthy: w.activeWorthy,
+      })),
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Failed to load the word list" }, { status: 500 });

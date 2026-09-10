@@ -45,6 +45,14 @@ export default function StudyScreen() {
   const cur = queue?.[i];
   const pct = total ? Math.round((i / total) * 100) : 0;
 
+  // Passive reviews occasionally quiz recognition the other way round — RU
+  // shown, EN recalled — instead of always EN -> RU. `i` isn't read inside
+  // the callback on purpose: it's only the recompute trigger, so a fresh
+  // coin flip happens once per card and stays stable across re-renders
+  // (e.g. the flip-to-reveal tap) within that same card.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const reversed = useMemo(() => Math.random() < 0.35, [i]);
+
   function advance() {
     setBusy(false);
     setFlipped(false);
@@ -164,10 +172,18 @@ export default function StudyScreen() {
 
       {cur.type === "learnShow" && <Tag icon="book" cls="text-featherDark bg-feather/10">Learning a new word</Tag>}
       {cur.type === "learnCheck" && <Tag icon="check" cls="text-macawDark bg-macaw/10">Checking new words</Tag>}
-      {cur.type === "passive" && <Tag icon="repeat" cls="text-macawDark bg-macaw/10">Review · recognition</Tag>}
+      {cur.type === "passive" && (
+        w.isDebt
+          ? <Tag icon="flame" fill cls="text-foxDark bg-fox/10">Catching up{reversed ? " (RU → EN)" : ""}</Tag>
+          : <Tag icon="repeat" cls="text-macawDark bg-macaw/10">Review · recognition{reversed ? " (RU → EN)" : ""}</Tag>
+      )}
       {cur.type === "activeLearnShow" && <Tag icon="zap" fill cls="text-beeDark bg-bee/10">Active word — memorize it first</Tag>}
       {cur.type === "activeLearnCheck" && <Tag icon="zap" fill cls="text-beeDark bg-bee/10">Checking an active word</Tag>}
-      {cur.type === "active" && <Tag icon="zap" fill cls="text-beeDark bg-bee/10">Active practice</Tag>}
+      {cur.type === "active" && (
+        w.isDebt
+          ? <Tag icon="flame" fill cls="text-foxDark bg-fox/10">Catching up</Tag>
+          : <Tag icon="zap" fill cls="text-beeDark bg-bee/10">Active practice</Tag>
+      )}
 
       {/* DIVIDER */}
       {cur.type === "divider" && (
@@ -199,11 +215,11 @@ export default function StudyScreen() {
           label={(g) => nextIntervalLabel(w.passive, g)} />
       )}
 
-      {/* PASSIVE (due review) */}
+      {/* PASSIVE (due review) — sometimes reversed: RU shown, EN recalled */}
       {cur.type === "passive" && (
         <PassiveBody w={w} flipped={flipped} onFlip={() => setFlipped(true)}
           onPick={(g) => onReviewGrade(w, "passive", g)} disabled={busy}
-          label={(g) => nextIntervalLabel(w.passive, g)} />
+          label={(g) => nextIntervalLabel(w.passive, g)} reversed={reversed} />
       )}
 
       {/* ACTIVE LEARN SHOW — word + translation are shown right away, this isn't a test yet */}
@@ -243,17 +259,25 @@ function DictEntry({ w, compact }: { w: SessionCard; compact?: boolean }) {
   );
 }
 
-function PassiveBody({ w, flipped, onFlip, onPick, disabled, label }: { w: SessionCard; flipped: boolean; onFlip: () => void; onPick: (g: Grade) => void; disabled: boolean; label: (g: Grade) => string }) {
+function PassiveBody({ w, flipped, onFlip, onPick, disabled, label, reversed }: { w: SessionCard; flipped: boolean; onFlip: () => void; onPick: (g: Grade) => void; disabled: boolean; label: (g: Grade) => string; reversed?: boolean }) {
   return (
     <>
       <Card>
         {!flipped ? (
-          <>
-            <div className="font-display leading-[1.05] text-[42px] text-eel">{w.word}</div>
-            {w.ipa && <div className="text-macaw text-[17px] mt-2 font-bold">{w.ipa}</div>}
-            <Speaker t={w.word} />
-            <div className="mt-4 text-xs text-hare font-bold">tap to check the translation</div>
-          </>
+          reversed ? (
+            <>
+              <div className="text-[24px] font-extrabold text-eel">{w.tr1 || "—"}</div>
+              {w.tr2 && <div className="font-display italic text-macaw text-sm mt-1">{w.tr2}</div>}
+              <div className="mt-4 text-xs text-hare font-bold">tap to check the English word</div>
+            </>
+          ) : (
+            <>
+              <div className="font-display leading-[1.05] text-[42px] text-eel">{w.word}</div>
+              {w.ipa && <div className="text-macaw text-[17px] mt-2 font-bold">{w.ipa}</div>}
+              <Speaker t={w.word} />
+              <div className="mt-4 text-xs text-hare font-bold">tap to check the translation</div>
+            </>
+          )
         ) : (
           <div key="answer" className="card-reveal">
             <div className="font-display text-[28px] text-eel">{w.word}</div>

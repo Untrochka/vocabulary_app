@@ -6,12 +6,14 @@ A personal English vocabulary trainer — spaced repetition, honest active recal
 
 A single-user, no-accounts, no-subscriptions app for learning English words. The core idea: a word doesn't count as "learned" until you've recalled it twice — once by recognizing it in context, once by producing it yourself with no hints. Two independent SM-2 tracks (the same algorithm Anki uses) run in parallel — recognition and production are different skills with different forgetting curves, so they get separate review schedules instead of one blended score.
 
-Four screens, nothing else:
+Six screens, nothing else:
 
-- **Home** — streak, level, daily goal, this week's activity, today's plan (learn / review counts).
-- **Study** — the lesson queue: new words, same-day reinforcement steps, due reviews, both passive and active tracks.
+- **Home** — streak, level, daily goal, this week's activity, today's plan (learn / review counts), and a catching-up banner when any word is in debt.
+- **Study** — the lesson queue: debt warm-up first, new words, same-day reinforcement steps, due reviews on both passive and active tracks (passive review direction mixes EN→RU and RU→EN instead of always one way).
 - **Add** — add one word or a batch, with auto-translation, duplicate detection by lemma, a way to backfill missing translations on old entries, and an optional "practice batch" tag for a big word dump from reading/listening that should clear same-day instead of trickling in over the usual week.
 - **Reading** — a short story generated from words you've learned (Groq, free tier), read aloud in-browser, with tap-to-translate on any word in context. Defaults to today's live session, or pick any past day you learned words on — useful for words that graduated to "mastered" long ago and rarely come up for review anymore.
+- **Recall** — an evening check for words that went active that day: nothing is shown up front, you recall the word and explain its meaning from memory, with an optional hint if you're stuck. See **What's Next** for the full shape of this one.
+- **Words** — a searchable, filterable, priority-sorted browse of the whole dictionary — the replacement for eyeballing entries in Notion, which the Postgres migration retired.
 
 The interface language is English; the vocabulary data itself is Russian-to-English by design (that's the actual product — translating the UI chrome doesn't change what the app teaches).
 
@@ -53,7 +55,7 @@ No UI kit, no state-management library, nothing beyond Prisma for the database. 
 ```
 src/
 ├── app/            Next.js App Router — routes + API route handlers
-├── screens/         page-level client components (Home, Study, Add, Reading)
+├── screens/         page-level client components (Home, Study, Add, Reading, Recall, Words)
 ├── entities/         typed domain models (word, session) — single source of truth
 │                    for the /api/session response shape
 └── shared/
@@ -140,23 +142,20 @@ Process-wise: directing an AI coding agent through requirements → implementati
 
 ## Limitations
 
-This is a personal tool for one user, not a production application. No auth, no multi-tenancy, never load-tested, never had real traffic beyond me. Component-level UI isn't unit-tested — only the algorithmic core is (SM-2, lemmatizer, dedup, streaks, queue building); the Postgres/Groq/Telegram integrations are exercised by hand, not by CI, since that would mean shipping real credentials to a CI runner. Both the mini-reading feature and word grading need your own free Groq API key — without one, the rest of the app works normally; reading is unavailable and new words just stay ungraded (no priority score, not eligible for active practice) until a key is added and `/api/words/grade` is run.
+This is a personal tool for one user, not a production application. No auth, no multi-tenancy, never load-tested, never had real traffic beyond me. Component-level UI isn't unit-tested — only the algorithmic core is (SM-2, lemmatizer, dedup, streaks, queue building); the Postgres/Groq/Telegram integrations are exercised by hand, not by CI, since that would mean shipping real credentials to a CI runner. The mini-reading feature, word grading, and recall mode's judging all need your own free Groq API key — without one, the rest of the app works normally; reading and recall-checking are unavailable and new words just stay ungraded (no priority score, not eligible for active practice) until a key is added and `/api/words/grade` is run.
 
-## What's Next
+## The Priority System
 
-A priority system to replace "every passively-learned word mechanically becomes an active word" — which is what actually motivated the Notion migration above — is landing in phases. Being specific about what's actually done versus just planned, since those are easy to blur together in a running list:
-
-**Built and shipped:**
+Built to replace "every passively-learned word mechanically becomes an active word" — which is what actually motivated the Notion migration above. Shipped in full, phase by phase:
 - **Groq grades every word** for frequency (1-100), IELTS relevance, and — critically — whether it's worth active (production) practice at all, restoring the curation judgment mechanical promotion replaced. New words get graded automatically right after being added. All 341 existing words have been graded via `POST /api/words/grade` — 263 (77%) came back `activeWorthy`, 78 (23%) recognition-only. (The free-tier Groq rate limit — 8000 tokens/minute — meant this took three separate calls to the endpoint to finish; the endpoint only grades what's still ungraded, so re-running it costs nothing extra.)
 - **A priority formula**, fully wired in — frequency, IELTS relevance, almost-mastered status, practice freshness, and debt, combined and clamped to 0-100 (`shared/lib/priority.ts`). Computed the moment a word is added (so a practice batch's freshness boost applies immediately, not only once grading gets to it), then recomputed after grading and after every review.
 - **The study queue reads priority and `activeWorthy`.** New words are ordered by priority, highest first, instead of arbitrary database order. The active track is gated on `activeWorthy === true` — an ungraded word simply waits rather than defaulting to "promote it anyway," which was the original bug.
 - **Debt.** A word answered "Again" (complete recall failure) on either track goes into debt: it jumps to the very front of the next session as a warm-up, and while it's unresolved it eats into (not on top of) the daily new-word budget — 5 debts against a cap of 8 leaves room for 3 new words, not 11. Clears the moment the word is answered correctly on either track.
 - **A real mastery bar**: 4 consecutive correct active reviews (any miss resets it to 0 — tracked as `correctStreak`, separate from the SM-2 rep count) *and* a 14-day active interval, both at once — replacing the old 5-reps/3-day bar, which let near-misses still count and called a word mature in about 4 days. The 21 words that had reached "Изучен активно" under the old bar were reset to "picked for active," since `correctStreak` didn't exist before this and none of them had actually cleared the new bar.
 - **Practice mode.** The Add screen's Batch tab has a "practice batch" toggle (with an optional source note, e.g. "reading: coral reefs article") — the pasted words get tagged with a `PracticeBatch` and jump to the front of today's new-word queue, unconditionally, with the daily cap raised to fit the whole batch rather than trickling in over the usual week. A real bug surfaced while testing this: sorting everyone by priority and slicing wasn't enough, because an already-graded, high-frequency *regular* word could still outscore a fresh, ungraded batch word and silently bump it out of the list even with room to spare — fixed by placing batch words first, unconditionally, not just priority-sorted alongside everyone else (`pickNewToLearn` in `shared/lib/session.ts`, now a pure tested function). The batch is marked complete once every word in it has had its first pass.
-- **Evening recall mode.** A `/recall` screen lists every word that went active that day, showing only its translation as a hint — the word itself is withheld from the API response entirely, not just hidden in the UI, until you've answered. You type what you think the word is (or admit you don't remember it, which skips straight to a "wrong" verdict with no Groq call needed); Groq judges correct/near-miss/wrong against the real word, and the verdict feeds back into the active track through the same review pipeline `/api/study` uses (`shared/lib/reviewOutcome.ts`), so a recall miss opens debt and resets the mastery streak exactly like a missed regular review would.
-
-**Not built yet:**
-- **Nothing in the UI shows priority, debt, grading status, or open practice batches yet** — it all drives the queue now, but there's no visible indicator (a debt badge, a priority list, batch progress) anywhere on screen. Planned as part of the final screens pass.
+- **Evening recall mode.** A `/recall` screen lists every word that went active that day — nothing about it is shown by default, not even the translation, both withheld from the API response entirely (not just hidden in the UI) until an answer's been checked. You type the word from memory and explain its meaning in your own words; an optional hint (first letter, free, then an easier synonym via Groq) is there if you get stuck, or you can admit you don't remember, which skips straight to a "wrong" verdict with no Groq call needed. Groq judges the word and the explanation together against the real word, and the verdict feeds back into the active track through the same review pipeline `/api/study` uses (`shared/lib/reviewOutcome.ts`), so a recall miss opens debt and resets the mastery streak exactly like a missed regular review would.
+- **Mixed-direction passive review.** A due passive review is no longer always "see the English word, recall the translation" — about a third of the time it flips: only the translation is shown, and you recall the English word instead. Same SM-2 grading either way; only which side is hidden before you tap "Show answer" changes.
+- **All of it is now visible, not just load-bearing.** A debt banner on Home links straight into a warm-up lesson; Study tags a debt card as "Catching up" instead of blending it into the normal review tag; and the new Words screen — searchable, filterable by status, sortable by priority or A–Z — is the direct replacement for the old habit of opening Notion to eyeball the dictionary, since Notion is gone.
 
 ## Running It Yourself
 

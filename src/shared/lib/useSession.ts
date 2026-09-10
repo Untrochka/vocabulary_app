@@ -13,7 +13,7 @@ export function useSession() {
     fetch("/api/session")
       .then((r) => r.json())
       .then((d: SessionApiResult) => ("error" in d ? setError(d.error) : setSession(d)))
-      .catch(() => setError("Failed to load. Check your Notion connection."));
+      .catch(() => setError("Failed to load — check your connection."));
   }, []);
 
   return { session, error };

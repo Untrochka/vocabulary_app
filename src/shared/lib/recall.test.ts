@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { listActiveDays, pickRecallWords, judgeRecallGuess, RECALL_GRADE } from "./recall";
+import { listActiveDays, pickRecallWords, firstLetterHint, judgeRecallAnswer, RECALL_GRADE } from "./recall";
 import { EMPTY_SRS } from "./srs";
 import type { Word } from "@/entities/word/model";
 
@@ -33,9 +33,9 @@ describe("pickRecallWords", () => {
     expect(pickRecallWords(words, "2026-08-20").map((w) => w.id)).toEqual(["a"]);
   });
 
-  it("never includes the target word itself — only id and the translation hint", () => {
+  it("never includes the word or even its translation — only the id", () => {
     const words = [word("a", "2026-08-20")];
-    expect(pickRecallWords(words, "2026-08-20")[0]).toEqual({ id: "a", tr1: "t-a" });
+    expect(pickRecallWords(words, "2026-08-20")[0]).toEqual({ id: "a" });
   });
 });
 
@@ -47,7 +47,13 @@ describe("RECALL_GRADE", () => {
   });
 });
 
-describe("judgeRecallGuess", () => {
+describe("firstLetterHint", () => {
+  it("returns just the first letter, uppercased", () => {
+    expect(firstLetterHint("narrow")).toBe("N");
+  });
+});
+
+describe("judgeRecallAnswer", () => {
   const originalKey = process.env.GROQ_API_KEY;
   const originalFetch = global.fetch;
   afterEach(() => {
@@ -59,13 +65,13 @@ describe("judgeRecallGuess", () => {
     process.env.GROQ_API_KEY = "test-key";
     global.fetch = vi.fn(async () =>
       new Response(
-        JSON.stringify({ choices: [{ message: { content: '{"verdict":"correct","feedback":"Верно, это то самое слово."}' } }] }),
+        JSON.stringify({ choices: [{ message: { content: '{"verdict":"correct","feedback":"Верно, это то самое слово, и смысл понят."}' } }] }),
         { status: 200 }
       )
     ) as unknown as typeof fetch;
 
-    const result = await judgeRecallGuess("narrow", "узкий", "narrow");
-    expect(result).toEqual({ verdict: "correct", feedback: "Верно, это то самое слово." });
+    const result = await judgeRecallAnswer("narrow", "узкий", "narrow", "when something is not wide");
+    expect(result).toEqual({ verdict: "correct", feedback: "Верно, это то самое слово, и смысл понят." });
   });
 
   it("throws on an unrecognized verdict instead of silently accepting it", async () => {
@@ -74,6 +80,6 @@ describe("judgeRecallGuess", () => {
       new Response(JSON.stringify({ choices: [{ message: { content: '{"verdict":"maybe","feedback":"..."}' } }] }), { status: 200 })
     ) as unknown as typeof fetch;
 
-    await expect(judgeRecallGuess("narrow", "узкий", "not sure")).rejects.toThrow(/unrecognized verdict/);
+    await expect(judgeRecallAnswer("narrow", "узкий", "narrow", "not sure")).rejects.toThrow(/unrecognized verdict/);
   });
 });
