@@ -3,29 +3,36 @@ import { EMPTY_SRS, review, isDue, todayISO, LEARNING_STEPS_MIN, type SrsState }
 import { isActiveMature, countLearnedPassiveToday, countLearnedActiveToday } from "./status";
 import type { Word } from "./model";
 
-const CAPS = { activeMatureReps: 5, activeMatureDays: 3 };
+const CAPS = { activeMatureStreak: 4, activeMatureDays: 14 };
 
 function word(over: Partial<Word> = {}): Pick<Word, "learnedAt" | "active"> {
   return { learnedAt: null, active: EMPTY_SRS, ...over };
 }
 
 describe("isActiveMature", () => {
-  it("is false when neither reps nor interval reached the bar", () => {
-    expect(isActiveMature({ ...EMPTY_SRS, reps: 3, interval: 0 }, CAPS.activeMatureReps, CAPS.activeMatureDays)).toBe(false);
+  it("is false when neither the streak nor the interval reached the bar", () => {
+    expect(isActiveMature(2, 0, CAPS.activeMatureStreak, CAPS.activeMatureDays)).toBe(false);
   });
 
-  it("is false with enough reps but interval still 0 (mid same-day steps)", () => {
-    // Ровно то, из-за чего слова зависали: reps набрался, а interval — ещё нет.
-    expect(isActiveMature({ ...EMPTY_SRS, reps: 6, interval: 0 }, CAPS.activeMatureReps, CAPS.activeMatureDays)).toBe(false);
+  it("is false with enough streak but the interval still short", () => {
+    // The failure mode a plain rep count had: enough correct answers racked
+    // up same-day, but the word hasn't actually survived real days apart yet.
+    expect(isActiveMature(5, 7, CAPS.activeMatureStreak, CAPS.activeMatureDays)).toBe(false);
   });
 
-  it("is false with enough interval but not enough reps", () => {
-    expect(isActiveMature({ ...EMPTY_SRS, reps: 2, interval: 3 }, CAPS.activeMatureReps, CAPS.activeMatureDays)).toBe(false);
+  it("is false with enough interval but not enough streak", () => {
+    expect(isActiveMature(2, 20, CAPS.activeMatureStreak, CAPS.activeMatureDays)).toBe(false);
   });
 
   it("is true once both thresholds are met", () => {
-    expect(isActiveMature({ ...EMPTY_SRS, reps: 5, interval: 3 }, CAPS.activeMatureReps, CAPS.activeMatureDays)).toBe(true);
-    expect(isActiveMature({ ...EMPTY_SRS, reps: 8, interval: 14 }, CAPS.activeMatureReps, CAPS.activeMatureDays)).toBe(true);
+    expect(isActiveMature(4, 14, CAPS.activeMatureStreak, CAPS.activeMatureDays)).toBe(true);
+    expect(isActiveMature(8, 21, CAPS.activeMatureStreak, CAPS.activeMatureDays)).toBe(true);
+  });
+
+  it("a single miss resets the streak, unlike a rep count that only ever grew", () => {
+    // The whole point of switching from reps to correctStreak: 3 correct,
+    // 1 miss, 3 more correct should NOT read the same as 6 correct in a row.
+    expect(isActiveMature(3, 14, CAPS.activeMatureStreak, CAPS.activeMatureDays)).toBe(false);
   });
 });
 
@@ -109,26 +116,36 @@ describe("a word learned today keeps coming back and eventually matures (no sile
     vi.useRealTimers();
   });
 
-  it("active: only becomes 'Изучен активно' once it survives the real interval, not just clicks", () => {
+  it("active: only becomes 'Изучен активно' once it survives the real interval AND a clean streak, not just clicks", () => {
     vi.useFakeTimers().setSystemTime(new Date("2026-08-10T09:00:00.000Z"));
     let active: SrsState = EMPTY_SRS;
+    let correctStreak = 0; // tracked outside SrsState now — see study/route.ts
 
     for (let i = 0; i < LEARNING_STEPS_MIN.length; i++) {
       vi.setSystemTime(new Date(active.due ?? Date.now()));
       active = review(active, 2);
-      expect(isActiveMature(active, CAPS.activeMatureReps, CAPS.activeMatureDays)).toBe(false);
+      correctStreak++;
+      expect(isActiveMature(correctStreak, active.interval, CAPS.activeMatureStreak, CAPS.activeMatureDays)).toBe(false);
     }
 
-    // Ступень лестницы 1: должно быть 5-е успешное повторение и interval>=3, чтобы созреть.
+    // Off the same-day ladder now (interval starts climbing 1 → 3 → 7 → 14) —
+    // streak clears the bar well before the interval does.
     vi.setSystemTime(new Date(active.due ?? Date.now()));
-    active = review(active, 2); // reps 4, interval 1
-    expect(isActiveMature(active, CAPS.activeMatureReps, CAPS.activeMatureDays)).toBe(false);
+    active = review(active, 2); correctStreak++; // streak 4, interval 1
+    expect(isActiveMature(correctStreak, active.interval, CAPS.activeMatureStreak, CAPS.activeMatureDays)).toBe(false);
 
     vi.setSystemTime(new Date(active.due + "T12:00:00.000Z"));
-    active = review(active, 2); // reps 5, interval 3
-    expect(active.reps).toBe(5);
-    expect(active.interval).toBe(3);
-    expect(isActiveMature(active, CAPS.activeMatureReps, CAPS.activeMatureDays)).toBe(true);
+    active = review(active, 2); correctStreak++; // interval 3
+    expect(isActiveMature(correctStreak, active.interval, CAPS.activeMatureStreak, CAPS.activeMatureDays)).toBe(false);
+
+    vi.setSystemTime(new Date(active.due + "T12:00:00.000Z"));
+    active = review(active, 2); correctStreak++; // interval 7
+    expect(isActiveMature(correctStreak, active.interval, CAPS.activeMatureStreak, CAPS.activeMatureDays)).toBe(false);
+
+    vi.setSystemTime(new Date(active.due + "T12:00:00.000Z"));
+    active = review(active, 2); correctStreak++; // interval 14 — both bars cleared
+    expect(active.interval).toBe(14);
+    expect(isActiveMature(correctStreak, active.interval, CAPS.activeMatureStreak, CAPS.activeMatureDays)).toBe(true);
 
     vi.useRealTimers();
   });

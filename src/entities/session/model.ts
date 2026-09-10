@@ -15,6 +15,9 @@ export interface SessionCard {
   strength: number;
   passive: SrsState;
   active: SrsState;
+  // True for a word currently in debt (failed and not yet answered correctly
+  // since) — studyQueue.ts pulls these to the front of the session as a warm-up.
+  isDebt: boolean;
 }
 
 export interface SessionResponse {
@@ -26,6 +29,7 @@ export interface SessionResponse {
   caps: typeof CAPS;
   today: { passive: number; active: number };
   laterToday: { count: number; nextAt: string | null };
+  debtCount: number; // words currently in debt, regardless of which pool they show up in
 }
 
 export type SessionApiResult = SessionResponse | { error: string };

@@ -1,14 +1,16 @@
-import type { SrsState } from "@/shared/lib/srs";
 import { LEARNING_STEPS_MIN } from "@/shared/lib/srs";
 import type { Word } from "./model";
 
 // A word moves to "Изучен активно" (learned actively) only once both
-// thresholds are cleared at once: enough successful active reps AND the
-// required SRS interval reached. interval alone isn't enough — it stays 0 for
-// all three same-day steps. reps alone isn't enough either — it can't tell
-// "climbed the ladder over real days" apart from "clicked through reps back to back".
-export function isActiveMature(active: SrsState, minReps: number, minInterval: number): boolean {
-  return active.reps >= minReps && active.interval >= minInterval;
+// thresholds are cleared at once: enough CONSECUTIVE correct active reviews
+// (correctStreak — resets to 0 on any miss, unlike a plain rep count, which
+// used to let a handful of near-misses still count toward mastery) AND the
+// required SRS interval reached. Streak alone isn't enough — a word answered
+// right three times in a row same-day hasn't proven it survives real days
+// apart; interval alone isn't enough either — it stays 0 for all the
+// same-day steps regardless of how many were answered correctly.
+export function isActiveMature(correctStreak: number, activeInterval: number, minStreak: number, minInterval: number): boolean {
+  return correctStreak >= minStreak && activeInterval >= minInterval;
 }
 
 // How many words started on the passive track today. learnedAt is set

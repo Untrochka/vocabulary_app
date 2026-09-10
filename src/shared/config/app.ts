@@ -5,12 +5,14 @@
 export const CAPS = {
   passivePerDay: 8, // new words for passive recognition per day
   activePerDay: 12, // new words for active learning per day
-  // Threshold for "learned actively": a word must clear both bars — enough
-  // reps (activeMatureReps) AND enough accumulated interval (activeMatureDays).
-  // 3 same-day steps + 2 rungs of the 1→3 ladder — maturity in ~4 days,
-  // instead of the 7→14 it used to take with plain interval>=7.
-  activeMatureReps: 5,
-  activeMatureDays: 3,
+  // Threshold for "learned actively": a word must clear both bars — a clean
+  // streak of consecutive correct active reviews (any single miss resets
+  // it to 0 — see correctStreak in study/route.ts) AND the accumulated SRS
+  // interval. Replaces the old 5-reps/3-days bar, which let reps climb even
+  // through near-misses and called a word mature in ~4 days; this one takes
+  // real weeks, on purpose — reps was measuring clicks, not retention.
+  activeMatureStreak: 4,
+  activeMatureDays: 14,
   learnBatchSize: 5, // how many new words to learn in one pass before checking
   activeBatchSize: 4, // same, for active words
 };

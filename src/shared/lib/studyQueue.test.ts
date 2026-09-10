@@ -3,8 +3,8 @@ import { buildStudyQueue } from "./studyQueue";
 import { EMPTY_SRS } from "./srs";
 import type { SessionCard } from "@/entities/session/model";
 
-function card(word: string): SessionCard {
-  return { id: word, word, tr1: word, tr2: "", ipa: "", example: "", strength: 0, passive: EMPTY_SRS, active: EMPTY_SRS };
+function card(word: string, isDebt = false): SessionCard {
+  return { id: word, word, tr1: word, tr2: "", ipa: "", example: "", strength: 0, passive: EMPTY_SRS, active: EMPTY_SRS, isDebt };
 }
 
 describe("buildStudyQueue", () => {
@@ -49,5 +49,39 @@ describe("buildStudyQueue", () => {
     const divider = q.find((i) => i.type === "divider");
     expect(divider?.word).toBeNull();
     expect(q.filter((i) => i.type !== "divider").every((i) => i.word !== null)).toBe(true);
+  });
+
+  it("puts debt words first, ahead of new words, regardless of which track they're due on", () => {
+    const q = buildStudyQueue({
+      newToLearn: [card("newWord")],
+      duePassive: [card("regularReview"), card("debtPassive", true)],
+      newActive: [],
+      dueActive: [card("debtActive", true)],
+    });
+    expect(q.map((i) => i.word?.word ?? null)).toEqual([
+      "debtPassive", "debtActive", "newWord", "newWord", null /* divider */, "regularReview",
+    ]);
+    expect(q.slice(0, 2).map((i) => i.type)).toEqual(["passive", "active"]);
+  });
+
+  it("a debt word appears exactly once — pulled out of the regular due pool, not duplicated", () => {
+    const q = buildStudyQueue({
+      newToLearn: [],
+      duePassive: [card("debtWord", true)],
+      newActive: [],
+      dueActive: [],
+    });
+    expect(q).toHaveLength(1);
+    expect(q[0]).toEqual({ type: "passive", word: card("debtWord", true) });
+  });
+
+  it("no debt means no warmup section — behaves exactly like before", () => {
+    const q = buildStudyQueue({
+      newToLearn: [],
+      duePassive: [card("regular1"), card("regular2")],
+      newActive: [],
+      dueActive: [],
+    });
+    expect(q.map((i) => i.word?.word)).toEqual(["regular1", "regular2"]);
   });
 });

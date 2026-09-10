@@ -38,7 +38,7 @@ Next.js 14 (App Router)
 TypeScript (strict)
 Tailwind CSS
 PostgreSQL (Neon) + Prisma — words, SRS state, streaks, everything — the only database
-Groq API (openai/gpt-oss-120b) — mini-reading story generation + contextual translation
+Groq API (openai/gpt-oss-120b) — mini-reading story generation + contextual translation + word grading
 Telegram Bot API + Vercel Cron — morning/evening study reminders
 Web Speech API        — in-browser pronunciation, no paid TTS service
 Vitest                — algorithmic core (SM-2, lemmatizer, dedup, streaks, queue building)
@@ -140,18 +140,22 @@ Process-wise: directing an AI coding agent through requirements → implementati
 
 ## Limitations
 
-This is a personal tool for one user, not a production application. No auth, no multi-tenancy, never load-tested, never had real traffic beyond me. Component-level UI isn't unit-tested — only the algorithmic core is (SM-2, lemmatizer, dedup, streaks, queue building); the Postgres/Groq/Telegram integrations are exercised by hand, not by CI, since that would mean shipping real credentials to a CI runner. The mini-reading feature needs your own free Groq API key — without one, the rest of the app works normally and only that one screen is unavailable.
+This is a personal tool for one user, not a production application. No auth, no multi-tenancy, never load-tested, never had real traffic beyond me. Component-level UI isn't unit-tested — only the algorithmic core is (SM-2, lemmatizer, dedup, streaks, queue building); the Postgres/Groq/Telegram integrations are exercised by hand, not by CI, since that would mean shipping real credentials to a CI runner. Both the mini-reading feature and word grading need your own free Groq API key — without one, the rest of the app works normally; reading is unavailable and new words just stay ungraded (no priority score, not eligible for active practice) until a key is added and `/api/words/grade` is run.
 
 ## What's Next
 
-In progress — a priority system to replace "every passively-learned word mechanically becomes an active word," which is what actually motivated the Notion migration above:
+A priority system to replace "every passively-learned word mechanically becomes an active word" — which is what actually motivated the Notion migration above — is landing in phases. Being specific about what's actually done versus just planned, since those are easy to blur together in a running list:
 
-- **A per-word priority score** (frequency, IELTS relevance, "almost mastered — finish it," freshness for words just added from reading/listening) that orders the new-word queue instead of leaving it arbitrary.
-- **Groq grades every word once** for frequency/relevance and, critically, whether it's worth active (production) practice at all — restoring the curation judgment that today's mechanical promotion replaced. New words get graded as they're added.
-- **A "debt" concept**: a word you got wrong yesterday and still haven't cleared blocks new words from filling the whole daily quota, and gets reviewed first as a warm-up.
-- **A real mastery bar** — consecutive correct reviews, not just a rep count, with any miss resetting it — plus a **Practice mode** for word dumps from reading/listening (a temporary higher daily cap so a batch doesn't trickle in over a week), and an evening **recall mode**: explain a word you learned today in your own words, graded by Groq.
+**Built and shipped:**
+- **Groq grades every word** for frequency (1-100), IELTS relevance, and — critically — whether it's worth active (production) practice at all, restoring the curation judgment mechanical promotion replaced. New words get graded automatically right after being added. The existing 341 words get graded in one `POST /api/words/grade` pass — not yet actually run against the real API (no `GROQ_API_KEY` in local dev; it exists in production, hasn't been triggered there yet). **Until that pass runs, the active track is empty for everyone** — see below.
+- **A priority formula**, fully wired in now — frequency, IELTS relevance, almost-mastered status, practice freshness, and debt, combined and clamped to 0-100 (`shared/lib/priority.ts`). Recomputed after grading and after every review.
+- **The study queue reads priority and `activeWorthy`.** New words (both tracks) are ordered by priority, highest first, instead of arbitrary database order. The active track is now gated on `activeWorthy === true` — an ungraded word (`activeWorthy` still `null`) simply waits rather than defaulting to "promote it anyway," which was the original bug. Direct consequence: **the active track shows nothing until the Groq grading pass above actually runs at least once.**
+- **Debt.** A word answered "Again" (complete recall failure) on either track goes into debt: it jumps to the very front of the next session as a warm-up, and while it's unresolved it eats into (not on top of) the daily new-word budget — 5 debts against a cap of 8 leaves room for 3 new words, not 11. Clears the moment the word is answered correctly on either track.
+- **A real mastery bar**: 4 consecutive correct active reviews (any miss resets it to 0 — tracked as `correctStreak`, separate from the SM-2 rep count) *and* a 14-day active interval, both at once — replacing the old 5-reps/3-day bar, which let near-misses still count and called a word mature in about 4 days. The 21 words that had reached "Изучен активно" under the old bar were reset to "picked for active" — `correctStreak` didn't exist before this, so none of them had actually cleared the new one.
 
-All of it lives in Postgres now (see above) specifically so this didn't mean bolting five more fields onto a Notion schema.
+**Not built yet:**
+- **Practice mode** (a word dump from reading/listening gets a temporary higher daily cap instead of trickling in over a week) and an evening **recall mode** (explain a word in your own words, graded by Groq) — both new screens and flows, not started.
+- **Nothing in the UI shows priority, debt, or grading status yet** — it all drives the queue now, but there's no visible indicator (a debt badge, a priority list) anywhere on screen. Planned as part of the screens pass alongside practice/recall mode.
 
 ## Running It Yourself
 

@@ -6,7 +6,7 @@ import type { SessionCard, SessionResponse } from "@/entities/session/model";
 import type { Word } from "@/entities/word/model";
 
 function makeCard(id: string, word: string, tr1 = `перевод-${id}`): SessionCard {
-  return { id, word, tr1, tr2: "", ipa: "", example: "", strength: 0, passive: EMPTY_SRS, active: EMPTY_SRS };
+  return { id, word, tr1, tr2: "", ipa: "", example: "", strength: 0, passive: EMPTY_SRS, active: EMPTY_SRS, isDebt: false };
 }
 
 function makeWord(id: string, word: string, learnedAt: string | null, tr1 = `перевод-${id}`): Word {
@@ -25,6 +25,7 @@ function makeSession(parts: Partial<Pick<SessionResponse, "newToLearn" | "newAct
     caps: CAPS,
     today: { passive: 0, active: 0 },
     laterToday: { count: 0, nextAt: null },
+    debtCount: 0,
     ...parts,
   };
 }
