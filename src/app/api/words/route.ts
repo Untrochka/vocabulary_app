@@ -4,9 +4,11 @@ import { fetchTranslation } from "@/shared/lib/translate";
 import { lemmatize } from "@/shared/lib/lemmatize";
 import { parseEntry } from "@/shared/lib/parseEntry";
 import { assessWordQuality } from "@/shared/lib/wordValidation";
+import { gradeAndSaveWords } from "@/shared/lib/wordGrader";
 import type { NewWordInput } from "@/entities/word/model";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30; // grading the newly-added words can take a few Groq round-trips
 
 // Lightweight list of all words — for duplicate checking on the add screen
 // (picking an existing word, highlighting matches within a batch).
@@ -76,8 +78,18 @@ export async function POST(req: Request) {
 
     if (!clean.length) return NextResponse.json({ error: "No words to add", skipped }, { status: 400 });
 
-    const created = await repo.create(clean);
-    return NextResponse.json({ created, skipped });
+    const createdWords = await repo.create(clean);
+
+    // Best-effort — grading is a nice-to-have that shouldn't turn a
+    // successful add into an error. Without GROQ_API_KEY this just fails
+    // fast and the words stay ungraded until the next /api/words/grade pass.
+    try {
+      await gradeAndSaveWords(createdWords);
+    } catch (e) {
+      console.error("wordGrader: grading newly-added words failed", e);
+    }
+
+    return NextResponse.json({ created: createdWords.length, skipped });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message ?? "Failed to add" }, { status: 500 });
   }

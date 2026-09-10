@@ -13,16 +13,17 @@
     "format:check": "prettier --check .",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:deploy": "prisma migrate deploy"
+    "db:deploy": "prisma migrate deploy",
+    "migrate:notion": "node scripts/migrate-notion-to-postgres.mjs"
   },
   "dependencies": {
-    "@notionhq/client": "^2.2.15",
     "@prisma/client": "^6.19.3",
     "next": "14.2.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@notionhq/client": "^2.2.15",
     "@types/node": "^20.14.9",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

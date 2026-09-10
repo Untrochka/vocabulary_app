@@ -1,13 +1,13 @@
-// Стрики и дневная активность — собственная БД приложения, не Notion.
-// Notion остаётся источником правды только для слов и их SRS-статусов.
+// Streaks, daily activity, and now the words themselves — this is the app's
+// only database. Notion is no longer used for word storage (used to be the
+// source of truth; migrated to Postgres — see scripts/migrate-notion-to-postgres.mjs).
 
 generator client {
   provider = "prisma-client-js"
 }
 
-// Пин на стабильную линию Prisma 6.x: у 7.x обязательны драйвер-адаптеры
-// и отдельный prisma.config.ts — экспериментальная сложность, которая
-// не нужна для двух таблиц счётчика стрика.
+// Pinned to the stable 6.x line: 7.x requires driver adapters and a separate
+// prisma.config.ts — experimental complexity this app doesn't need.
 
 datasource db {
   provider  = "postgresql"
@@ -16,7 +16,7 @@ datasource db {
 }
 
 model DailyActivity {
-  date           String   @id // YYYY-MM-DD, локальная дата пользователя (та же, что todayISO() в SRS)
+  date           String   @id // YYYY-MM-DD, the user's local date (same as todayISO() in srs.ts)
   activeReviews  Int      @default(0)
   passiveReviews Int      @default(0)
   newWords       Int      @default(0)
@@ -26,13 +26,98 @@ model DailyActivity {
   @@map("daily_activity")
 }
 
-// Одна строка-синглтон — приложение однопользовательское, отдельный user_id избыточен.
+// One singleton row — the app is single-user, a separate user_id would be overkill.
 model StreakState {
   id             Int      @id @default(1)
   current        Int      @default(0)
   best           Int      @default(0)
-  lastActiveDate String? // YYYY-MM-DD последнего дня, когда дневной минимум был выполнен
+  lastActiveDate String? // YYYY-MM-DD of the last day the daily minimum was met
   updatedAt      DateTime @updatedAt
 
   @@map("streak_state")
+}
+
+// The word database itself. id defaults to a fresh cuid for new words, but
+// migrated rows keep their original Notion page ID as the id — makes the
+// migration script idempotent (safe to re-run, matches by id) and means old
+// notion.so links found in old notes/exports still map to a real row.
+model Word {
+  id       String  @id @default(cuid())
+  word     String
+  tr1      String  @default("")
+  tr2      String  @default("")
+  ipa      String  @default("")
+  example  String  @default("")
+  status   String  @default("Не изучен") // WordStatus in entities/word/model.ts — same 4 values as before
+  strength Int     @default(0) // 0..100
+  learnedAt String? // YYYY-MM-DD, set once on first passive pass
+
+  // Passive track (recognition) — same shape as SrsState in shared/lib/srs.ts,
+  // just flattened into columns instead of nested, relational storage has no
+  // use for the nesting Notion's property model forced.
+  passiveReps     Int     @default(0)
+  passiveInterval Int     @default(0)
+  passiveEase     Float   @default(2.5)
+  passiveDue      String? // ISO date or date-time
+  passiveLast     String?
+
+  // Active track (production)
+  activeReps     Int     @default(0)
+  activeInterval Int     @default(0)
+  activeEase     Float   @default(2.5)
+  activeDue      String?
+  activeLast     String?
+
+  // Priority system (see shared/lib/priority.ts). Lives on the same row now
+  // that words aren't Notion pages anymore — no reason to split it into a
+  // separate table joined by word id, that indirection only existed to avoid
+  // touching Notion's schema.
+  priority      Int       @default(0) // 0..100, recomputed by the priority formula
+  frequency     Int? // Groq's estimate: how common the word is in real usage
+  ieltsRelevant Boolean?
+  activeWorthy  Boolean? // only activeWorthy words are eligible for the active track — see session.ts
+  gradeReason   String? // one line of why, so the Groq call is auditable
+  gradedAt      DateTime?
+  correctStreak Int       @default(0) // consecutive correct reviews — the actual "mastered" signal, not just rep count
+  lapses        Int       @default(0) // total times this word has been gotten wrong
+  debtSince     String? // YYYY-MM-DD the word first went unresolved; null = no debt
+  firstSeenAt   String? // YYYY-MM-DD of the first time this word was shown, for the "yesterday's words" warm-up
+  batchId       String? // links a word to the PracticeBatch it was added from, if any
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([batchId])
+  @@map("words")
+}
+
+// A batch of words added together from a reading/listening session —
+// practice mode's queue jumps these to the front and lifts the daily new-word
+// cap to fit the whole batch in one sitting instead of trickling in over days.
+model PracticeBatch {
+  id          String    @id @default(cuid())
+  source      String? // free text, e.g. "reading: an article about X"
+  note        String?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime? // set once every word in the batch has had its first active pass
+
+  @@map("practice_batches")
+}
+
+// The evening "explain it in your own words" check. wordId isn't a foreign
+// key on purpose — a word can be deleted later and the history should still
+// read, same reasoning as an order line item outliving the product it referenced.
+model SelfExplanation {
+  id        String   @id @default(cuid())
+  wordId    String
+  forDate   String // YYYY-MM-DD this explanation is for
+  text      String // what the user wrote, in their own words
+  verdict   String? // "correct" | "partial" | "wrong" — null until Groq has judged it
+  feedback  String? // Groq's one-line note on what was missed, if anything
+  createdAt DateTime @default(now())
+
+  @@index([wordId])
+  @@index([forDate])
+  @@map("self_explanations")
 }

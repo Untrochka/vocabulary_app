@@ -1,7 +1,6 @@
-// The single place with Notion field names and limits.
-// If the fields are named differently in Notion — fix them only here.
-
-export const NOTION_DB_ID = process.env.NOTION_DATABASE_ID || "";
+// Tunable limits for the study session. Word storage itself is in Postgres
+// now (see prisma/schema.prisma) — this file used to also hold the Notion
+// field-name mapping, retired along with Notion as the word store.
 
 export const CAPS = {
   passivePerDay: 8, // new words for passive recognition per day
@@ -15,30 +14,6 @@ export const CAPS = {
   learnBatchSize: 5, // how many new words to learn in one pass before checking
   activeBatchSize: 4, // same, for active words
 };
-
-// Notion database property names (RU). Must match the database exactly.
-export const P = {
-  word: "Слово", // title
-  tr1: "Определение",
-  tr2: "Часть речи",
-  ipa: "Транскрипция",
-  example: "Пример",
-  status: "Статус", // select
-  strength: "Сила знания (%)", // number 0..100
-  learnedAt: "Дата изучения", // date
-  // passive track
-  pReps: "П_Повторений",
-  pInterval: "П_Интервал ", // trailing space is part of the Notion field name
-  pEase: "П_Лёгкость",
-  pDue: "П_Следующий_Повтор ", // trailing space is part of the Notion field name
-  pLast: "П_Последнее_Повторение",
-  // active track
-  aReps: "А_Повторений ", // trailing space is part of the Notion field name
-  aInterval: "А_Интервал ", // trailing space is part of the Notion field name
-  aEase: "А_Лёгкость",
-  aDue: "А_Следующий_Повтор",
-  aLast: "А_Последнее_Повторение",
-} as const;
 
 export const STATUS = {
   new: "Не изучен",

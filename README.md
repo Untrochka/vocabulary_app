@@ -1,6 +1,6 @@
 # Vocabulary
 
-A personal English vocabulary trainer built on top of my own Notion database — spaced repetition, honest active recall, and short AI-generated reading practice.
+A personal English vocabulary trainer — spaced repetition, honest active recall, and short AI-generated reading practice.
 
 ## What is this?
 
@@ -19,19 +19,17 @@ The interface language is English; the vocabulary data itself is Russian-to-Engl
 
 Personal project, for my own vocabulary practice. I'd noticed that isolated word↔translation flashcards trained recognition but didn't transfer to actually using the words — streak going up, retention not going up with it. My own real experience learning words was different: hit a word in a text, look it up, forget it, look it up again, and by the second or third pass it sticks on its own. That's retrieval practice in varied context, which is a stronger signal than drilling an isolated pair — so the reading mode exists specifically to reproduce that, not as a feature added for its own sake. It's also why reading practice deliberately does **not** feed the streak or move SRS dates on its own: if it did, it would recreate the exact problem it was built to solve.
 
-## Why Notion, Not a Database
+## Why This Started on Notion, and Why It Didn't Stay There
 
-The word store is a Notion database, not Postgres or anything purpose-built — and that wasn't a "fastest way to get started" shortcut. It's a direct consequence of how this project actually began.
+Word storage is Postgres now, but it started as a Notion database, and that wasn't a "fastest way to get started" shortcut — it was a direct consequence of how this project actually began.
 
 I didn't set out to build an app that calls an AI API at all. Early on, Claude had direct access to my Notion workspace, and the plan was for the intelligence layer to live *inside* Notion, not inside the app: Claude would fill in translations, write example sentences, and judge which words were better suited to passive recognition versus active production, directly on the Notion page. The app itself was meant to be nothing more than a spaced-repetition review surface on top of that — open it, pull whatever was already curated in Notion, review it. No LLM calls from the app's own code, because the LLM work already happened upstream, by hand, in Notion, before a word ever reached the review queue.
 
-That's also why the Notion field mapping (`shared/config/app.ts`) has no word-suitability or curation field at all — the original design assumed that judgment call was made by a human (me, working with Claude directly in Notion) before the app ever saw the word. The app only ever needed to read `Слово`/`Определение`/`Транскрипция` and run SM-2 on top of them.
+That's also why the original Notion field mapping had no word-suitability or curation field at all — the design assumed that judgment call was made by a human (me, working with Claude directly in Notion) before the app ever saw the word. The app only ever needed to read the word/translation/transcription fields and run SM-2 on top of them.
 
-The scope grew from there, one good idea at a time rather than by plan: the dual passive/active tracks, streaks, the Telegram bot, and eventually the Groq-backed reading mode — the first and only place the app itself calls an LLM API — all got added incrementally, well after "just review words" was already working.
+The scope grew from there, one good idea at a time rather than by plan: the dual passive/active tracks, streaks, the Telegram bot, and the Groq-backed reading mode all got added incrementally, well after "just review words" was already working — and every one of them was still bolted onto Notion as the source of truth, because it kept working well enough not to revisit.
 
-**A real gap this leaves today:** the app currently promotes *every* passively-learned word straight into active production practice — see `activeEligible` in `shared/lib/session.ts`, which is any word with status `Изучен пассивно`, `Выбран для активного изучения`, or `Изучен активно`, not learned today. There's no curation step deciding which words are actually worth the harder recall-with-no-hints practice — it's purely mechanical SRS-state promotion. That's a simplification from the original idea, where only words flagged as active-worthy would ever enter that track, and I haven't wired that judgment back in yet — see **What's Next** below.
-
-**On scale:** `repository.ts`'s `listAll()` paginates the *entire* Notion database, 100 rows per request, sequentially, on every `/api/session` call — no caching. For a personal vocabulary list this is fine; Notion's API isn't fast, but it isn't the bottleneck at hundreds or even a couple thousand words. It would get progressively slower as the list grows, since it's O(n) Notion round-trips on every page load — a "the app gets sluggish before anything actually breaks" problem, not a wall it hits and stops at. I didn't plan for a huge word list when I picked Notion, and I still don't have one, so this hasn't mattered in practice.
+**What finally forced the move:** the curation step from the original plan never actually got built into the app. Every passively-learned word was mechanically promoted into active production practice with zero judgment about whether it was actually worth the harder recall-with-no-hints drill — and living with that daily is what surfaced the real problem. Fixing it properly meant per-word priority scoring, an AI grading pass, streak-aware mastery tracking, and a couple of new practice modes — real relational data with real query needs, not five more oddly-named Notion columns with trailing spaces in their keys. Notion was never going to be that; Postgres already was, for the streak data. `scripts/migrate-notion-to-postgres.mjs` is the one-time, read-only-on-Notion migration that moved all 341 words and their SRS state over — see **What's Next** for what the move enabled.
 
 ## Tech Stack
 
@@ -39,8 +37,7 @@ The scope grew from there, one good idea at a time rather than by plan: the dual
 Next.js 14 (App Router)
 TypeScript (strict)
 Tailwind CSS
-Notion API           — word database + both SRS tracks
-PostgreSQL (Neon) + Prisma — streaks and daily activity only, kept separate on purpose
+PostgreSQL (Neon) + Prisma — words, SRS state, streaks, everything — the only database
 Groq API (openai/gpt-oss-120b) — mini-reading story generation + contextual translation
 Telegram Bot API + Vercel Cron — morning/evening study reminders
 Web Speech API        — in-browser pronunciation, no paid TTS service
@@ -49,7 +46,7 @@ ESLint + Prettier + GitHub Actions CI
 pnpm
 ```
 
-No UI kit, no state-management library, no ORM beyond Prisma for the one Postgres table pair. Deliberately small dependency surface.
+No UI kit, no state-management library, nothing beyond Prisma for the database. Deliberately small dependency surface.
 
 ## Architecture
 
@@ -60,17 +57,16 @@ src/
 ├── entities/         typed domain models (word, session) — single source of truth
 │                    for the /api/session response shape
 └── shared/
-    ├── config/      Notion field-name mapping + tunable limits (CAPS), one file
-    ├── lib/         business logic: SM-2, lemmatizer, dedup, the Notion repository,
-    │                streaks, Telegram, translation orchestration, Groq reading
-    │                generation, offline queue, resilience wrappers
+    ├── config/      tunable limits (CAPS), one file
+    ├── lib/         business logic: SM-2, lemmatizer, dedup, the Postgres
+    │                repository, streaks, Telegram, translation orchestration,
+    │                Groq reading generation, offline queue
     └── ui/          small hand-rolled pieces (Icon, DuoButton, BackButton)
 ```
 
 A few decisions worth calling out:
 
-- **Notion as the word database**, behind a `WordsRepository` interface with one implementation. Swapping storage later means writing one new class and changing one line — the UI never touches Notion directly.
-- **Streaks live in Postgres, not Notion** — on purpose. They're a different kind of data (derived activity log, not source-of-truth vocabulary) and don't need Notion's flexibility.
+- **The word store sits behind a `WordsRepository` interface** with one implementation (Postgres now, Notion originally). That boundary is what let the whole store move without touching a single screen or API route — see **Why This Started on Notion** above.
 - **Everything fetches client-side from internal API routes** — no server-rendered data fetching. For a single-user personal tool this trade favors simplicity over the perf/SEO wins Server Components would normally buy; it wouldn't be the right call for a multi-user product.
 - **This isn't textbook Feature-Sliced Design**, even though the layout borrows FSD's vocabulary (`entities`, `shared`). There's no `features` layer, and `screens` stands in for FSD's `pages`. Business logic that would live in per-feature folders under strict FSD sits flatly in `shared/lib` instead — which is closer to how I actually organize small Next.js apps than how I organize larger admin panels. I'd rather have an honest, slightly-informal structure than force full FSD onto an app this size.
 
@@ -78,7 +74,7 @@ A few decisions worth calling out:
 
 Most of the implementation — the SM-2 engine, the Notion integration, the streak system, the Telegram bot, the reading feature, the redesign, and the cleanup pass described below — was written by Claude Code. I'm not going to pretend otherwise, and I don't think I should have to: the interesting part isn't whether I typed every line, it's whether I can direct an AI coding agent toward a working, coherent system and catch it when it's wrong.
 
-What stayed mine throughout: the product decisions (dual-track SRS, why reading doesn't touch the streak, what "learned" means), the technical constraints (stay on Notion, stay free-tier, stay Next.js), reviewing what got built, finding what didn't hold up, and deciding what was worth fixing versus what was fine as-is.
+What stayed mine throughout: the product decisions (dual-track SRS, why reading doesn't touch the streak, what "learned" means), the technical constraints (stay free-tier, stay Next.js, move off Notion once it stopped being enough), reviewing what got built, finding what didn't hold up, and deciding what was worth fixing versus what was fine as-is.
 
 ## How I Worked With Claude Code
 
@@ -126,7 +122,7 @@ The circular back-to-home button was byte-for-byte identical, copy-pasted, in tw
 | Area | Responsibility |
 |---|---|
 | Product idea & what "learned" means | Me |
-| Requirements & constraints (Notion, free-tier, Next.js) | Me |
+| Requirements & constraints (free-tier, Next.js, when to move off Notion) | Me |
 | Architecture | Me + Claude |
 | Implementation | Primarily Claude Code |
 | Code review & bug-finding | Me + Claude (audit passes), judgment calls — Me |
@@ -144,15 +140,19 @@ Process-wise: directing an AI coding agent through requirements → implementati
 
 ## Limitations
 
-This is a personal tool for one user, not a production application. No auth, no multi-tenancy, never load-tested, never had real traffic beyond me. Component-level UI isn't unit-tested — only the algorithmic core is (SM-2, lemmatizer, dedup, streaks, queue building); the Notion/Postgres/Groq/Telegram integrations are exercised by hand, not by CI, since that would mean shipping real credentials to a CI runner. The mini-reading feature needs your own free Groq API key — without one, the rest of the app works normally and only that one screen is unavailable.
+This is a personal tool for one user, not a production application. No auth, no multi-tenancy, never load-tested, never had real traffic beyond me. Component-level UI isn't unit-tested — only the algorithmic core is (SM-2, lemmatizer, dedup, streaks, queue building); the Postgres/Groq/Telegram integrations are exercised by hand, not by CI, since that would mean shipping real credentials to a CI runner. The mini-reading feature needs your own free Groq API key — without one, the rest of the app works normally and only that one screen is unavailable.
 
 ## What's Next
 
-Two things planned:
+In progress — a priority system to replace "every passively-learned word mechanically becomes an active word," which is what actually motivated the Notion migration above:
 
-- **Migrate the word store off Notion** to a proper database once the list outgrows a full-table Notion sync on every page load (see the scale note above — no urgency yet, but the ceiling is real).
-- **A daily cron job where a model picks which words graduate into active production practice**, restoring the curation judgment that today's mechanical "every passively-learned word eventually goes active" promotion replaced. Translation/example auto-fill is already solved without an LLM — `translate.ts` pulls from Google Translate, Tatoeba, and dictionaryapi.dev — so this is specifically about the one judgment call that was never automated at all: which words are actually worth active practice.
+- **A per-word priority score** (frequency, IELTS relevance, "almost mastered — finish it," freshness for words just added from reading/listening) that orders the new-word queue instead of leaving it arbitrary.
+- **Groq grades every word once** for frequency/relevance and, critically, whether it's worth active (production) practice at all — restoring the curation judgment that today's mechanical promotion replaced. New words get graded as they're added.
+- **A "debt" concept**: a word you got wrong yesterday and still haven't cleared blocks new words from filling the whole daily quota, and gets reviewed first as a warm-up.
+- **A real mastery bar** — consecutive correct reviews, not just a rep count, with any miss resetting it — plus a **Practice mode** for word dumps from reading/listening (a temporary higher daily cap so a batch doesn't trickle in over a week), and an evening **recall mode**: explain a word you learned today in your own words, graded by Groq.
+
+All of it lives in Postgres now (see above) specifically so this didn't mean bolting five more fields onto a Notion schema.
 
 ## Running It Yourself
 
-Want to point this at your own Notion database instead of just reading the code? [SETUP.md](SETUP.md) has the full config: environment variables, Postgres (Neon) for streaks, and registering your own Telegram bot for reminders.
+[SETUP.md](SETUP.md) has the full config: environment variables, Postgres (Neon), and registering your own Telegram bot for reminders.

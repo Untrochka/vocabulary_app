@@ -1,15 +1,12 @@
 # Self-Hosting Setup
 
-This is a personal, single-user app — there's no multi-tenant hosted version. If you want to run your own copy against your own Notion database, this is the config it needs. (The verification log at the bottom documents an earlier debugging pass on this codebase, kept for transparency — see the [README](README.md) for the fuller story of how this app evolved.)
+This is a personal, single-user app — there's no multi-tenant hosted version. If you want to run your own copy, this is the config it needs. (The verification log at the bottom documents an earlier debugging pass on this codebase, kept for transparency — see the [README](README.md) for the fuller story of how this app evolved, including the move off Notion.)
 
 ## `.env` setup
 
 Copy `.env.example` to `.env.local` (for local development) and/or enter the same variables in Vercel → Project Settings → Environment Variables (for production).
 
 ```
-NOTION_TOKEN=...            # already existed
-NOTION_DATABASE_ID=...      # already existed
-
 DATABASE_URL=...
 DIRECT_URL=...
 
@@ -21,9 +18,13 @@ CRON_SECRET=...
 
 GROQ_API_KEY=...           # optional — only /reading won't work without it
 GROQ_MODEL=openai/gpt-oss-120b   # optional, this is already the default
+
+NOTION_TOKEN=...           # only needed to re-run the Notion migration script, see below
+NOTION_DATABASE_ID=...
 ```
 
 ### Postgres (Neon, free tier)
+Postgres is the only database — words, SRS state, streaks, all of it.
 1. Go to [neon.tech](https://neon.tech), create a project.
 2. In Dashboard → Connection Details, copy the **pooled** connection string (it has `-pooler` in the host) → this is `DATABASE_URL`.
 3. In the same place, switch to **Direct connection** (without `-pooler`) → this is `DIRECT_URL` (only needed for migrations).
@@ -32,8 +33,9 @@ GROQ_MODEL=openai/gpt-oss-120b   # optional, this is already the default
    grep -E "^(DATABASE_URL|DIRECT_URL)=" .env.local > .env
    ```
    `.env` is already in `.gitignore`, so it won't end up in the repository.
-5. Locally: `pnpm db:migrate` — creates the `daily_activity` and `streak_state` tables.
+5. Locally: `pnpm db:migrate` — creates all the tables (`words`, `daily_activity`, `streak_state`, `practice_batches`, `self_explanations`).
 6. On Vercel: after the first deploy, run `pnpm db:deploy` (or run the migration locally, pointing `.env` at the production `DATABASE_URL`/`DIRECT_URL` before `pnpm db:migrate`).
+7. Starting from an existing Notion word database instead of empty? Fill in `NOTION_TOKEN`/`NOTION_DATABASE_ID` and run `node scripts/migrate-notion-to-postgres.mjs --dry-run` first to check it finds your words, then without `--dry-run` to actually copy them in. Read-only on the Notion side, safe to re-run.
 
 ### Telegram bot
 1. In Telegram, message [@BotFather](https://t.me/BotFather) → `/newbot` → follow the instructions → you'll get a token like `123456:ABC-...`. This is `TELEGRAM_BOT_TOKEN`.
